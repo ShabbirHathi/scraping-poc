@@ -5,6 +5,8 @@ import cv2
 import os
 import tempfile
 import time
+import base64
+import re
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -48,7 +50,7 @@ def get_page_content_selenium(url):
                         close_btn = driver.find_element(By.CSS_SELECTOR, selector)
                         if close_btn.is_displayed():
                             close_btn.click()
-                            time.sleep(0.5)  # Wait for popup to close
+                            time.sleep(5)  # Wait for popup to close
                             break
                     except:
                         continue
@@ -67,7 +69,153 @@ def get_page_content_selenium(url):
             return None
         finally:
             driver.quit()
+
+def verify_image(img_url, img_tag):
+    img_url_lower = img_url.lower()
+    
+    # Check if extension is SVG - skip immediately
+    if img_url_lower.endswith('.svg') or '.svg' in img_url_lower.split('?')[0]:
+        print(f"    ✗ Skipping SVG image")
+        return False
+    
+    # Check if URL contains "150x150" pattern (common thumbnail naming)
+    if '150x150' in img_url:
+        print(f"    ✗ Skipping 150x150 thumbnail (detected in URL)")
+        return False
+    
+    # Check if URL contains dimension patterns like "300x200" and extract them
+    # Look for patterns like "300x200", "150x150", etc. in the URL
+    dimension_pattern = r'(\d+)x(\d+)'
+    url_dimensions = re.findall(dimension_pattern, img_url)
+    if url_dimensions:
+        for dim_match in url_dimensions:
+            try:
+                w = int(dim_match[0])
+                h = int(dim_match[1])
+                # If dimensions in URL are <= 150x150, skip it
+                if w <= 150 and h <= 150:
+                    print(f"    ✗ Skipping small image (URL shows {w}x{h})")
+                    return False
+            except (ValueError, TypeError):
+                pass
+    
+    # Check HTML attributes for width and height
+    width = img_tag.get('width')
+    height = img_tag.get('height')
+    
+    if width and height:
+        try:
+            w = int(width)
+            h = int(height)
+            
+            # If exactly 150x150, skip it
+            if w == 150 and h == 150:
+                print(f"    ✗ Skipping 150x150 thumbnail: {w}x{h}")
+                return False
+            
+            # If smaller than 150x150, skip it
+            if w <= 150 or h <= 150:
+                print(f"    ✗ HTML attributes show size: {w}x{h} - Too small")
+                return False
+            
+            # If greater than 150x150, use it
+            if w > 150 and h > 150:
+                print(f"    ✓ HTML attributes show size: {w}x{h} - Meets requirement")
+                return True
+        except (ValueError, TypeError):
+            pass
+    
+    # No size info in HTML or URL - need to download and check
+    print(f"    ? No size info in URL/HTML - will download to check")
+    return None
                
+def download_image_selenium(url):
+    driver = None
+    try:
+        # Setup Chrome options
+        chrome_options = Options()
+        chrome_options.add_argument('--headless')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        driver = webdriver.Chrome(options=chrome_options)
+        
+        # Method 1: Try JavaScript fetch API
+        try:
+            script = """
+            return new Promise((resolve, reject) => {
+                fetch(arguments[0])
+                    .then(response => {
+                        if (!response.ok) {
+                            reject(new Error('HTTP error: ' + response.status));
+                            return;
+                        }
+                        return response.blob();
+                    })
+                    .then(blob => {
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            resolve(reader.result);
+                        };
+                        reader.onerror = function() {
+                            reject(new Error('Failed to read blob'));
+                        };
+                        reader.readAsDataURL(blob);
+                    })
+                    .catch(error => {
+                        reject(error);
+                    });
+            });
+            """
+            
+            base64_data = driver.execute_async_script(script, url)
+            
+            if base64_data and base64_data.startswith('data:'):
+                base64_part = base64_data.split(',', 1)[1]
+                image_bytes = base64.b64decode(base64_part)
+                return image_bytes
+        except:
+            pass  # Fall through to method 2
+        
+        # Method 2: Navigate to image URL and get cookies, then use httpx
+        try:
+            # Navigate to the image URL to establish session
+            driver.get(url)
+            time.sleep(1)
+            
+            # Get cookies from Selenium session
+            cookies = driver.get_cookies()
+            
+            # Convert Selenium cookies to httpx format
+            cookie_dict = {cookie['name']: cookie['value'] for cookie in cookies}
+            
+            # Use httpx with cookies
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'image/webp,image/apng,image/*,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.9',
+                'Referer': urlparse(url).scheme + '://' + urlparse(url).netloc
+            }
+            
+            response = httpx.get(url, headers=headers, cookies=cookie_dict, timeout=15.0, follow_redirects=True)
+            response.raise_for_status()
+            return response.content
+        except:
+            pass  # Both methods failed
+            
+        return None
+            
+    except Exception:
+        return None
+    finally:
+        if driver:
+            try:
+                driver.quit()
+            except:
+                pass
+
 def download_image(url):
     try:
         headers = {
@@ -80,9 +228,20 @@ def download_image(url):
         response.raise_for_status()
         return response.content
     except (httpx.RequestError, httpx.HTTPStatusError, httpx.TimeoutException):
-        # Silently skip failed downloads - don't print errors for each image
+        # Try Selenium fallback
+        print(f"    HTTP download failed, trying Selenium for: {url}")
+        selenium_result = download_image_selenium(url)
+        if selenium_result:
+            print(f"    ✓ Selenium download successful")
+            return selenium_result
         return None
     except Exception:
+        # Try Selenium fallback
+        print(f"    Exception in HTTP download, trying Selenium for: {url}")
+        selenium_result = download_image_selenium(url)
+        if selenium_result:
+            print(f"    ✓ Selenium download successful")
+            return selenium_result
         return None
 
 def bypass_popup(url):
@@ -97,30 +256,44 @@ def check_size(img_url):
         # Download image
         image_content = download_image(img_url)
         if not image_content:
+            print(f"    Failed to download image: {img_url}")
             return False
         
-        # Create a temporary file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
+        # Determine file extension from URL or content type
+        file_ext = '.jpg'  # default
+        if img_url.lower().endswith('.png'):
+            file_ext = '.png'
+        elif img_url.lower().endswith('.gif'):
+            file_ext = '.gif'
+        elif img_url.lower().endswith('.webp'):
+            file_ext = '.webp'
+        
+        # Create a temporary file with appropriate extension
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
             temp_file = tmp_file.name
             tmp_file.write(image_content)
         
         # Read image using OpenCV
         img = cv2.imread(temp_file)
         if img is None:
-            # Try reading as different format or check if it's a valid image
+            print(f"    OpenCV failed to read image: {img_url}")
             return False
         
         # Get image dimensions (height, width, channels)
         height, width = img.shape[:2]
+        print(f"    Image dimensions: {width}x{height}")
         
         # Check if both dimensions are greater than 150
         if width > 150 and height > 150:
+            print(f"    ✓ Image meets size requirement")
             return True
         else:
+            print(f"    ✗ Image too small: {width}x{height} (need >150x150)")
             return False
             
-    except Exception:
-        # Silently handle errors - skip this image
+    except Exception as e:
+        # Print error for debugging
+        print(f"    Exception in check_size: {type(e).__name__}: {str(e)}")
         return False
     finally:
         # Clean up temporary file
@@ -165,6 +338,8 @@ def get_page_content(url):
         }
         response = httpx.get(url, headers=headers, timeout=30.0, follow_redirects=True)
         response.raise_for_status()
+        # Add delay to allow any server-side processing
+        time.sleep(10)
         return response.text
     except httpx.RequestError as e:
         print(f"Request error for {url}: {e}")
@@ -231,6 +406,14 @@ def check_header_image(url, soup, max_images_to_check=10):
             
             images_checked += 1
             
+            # Verify image before downloading (skip SVG, 150x150, etc.)
+            verify_result = verify_image(img_url, img_tag)
+            if verify_result is False:
+                continue  # Skip this image
+            if verify_result is True:
+                return img_url  # Use this image (size > 150x150 from HTML attributes)
+            
+            # If verify returns None, need to download and check
             if check_size(img_url):
                 return img_url
     
@@ -264,10 +447,95 @@ def check_container_images(url, soup, container_tag, max_images_to_check=20):
             
             images_checked += 1
             
+            # Verify image before downloading (skip SVG, 150x150, etc.)
+            verify_result = verify_image(img_url, img_tag)
+            if verify_result is False:
+                continue  # Skip this image
+            if verify_result is True:
+                return img_url  # Use this image (size > 150x150 from HTML attributes)
+            
+            # If verify returns None, need to download and check
             if not check_size(img_url):
                 continue
             
             return img_url
+    
+    return None
+
+def check_all_images(url, soup, max_images_to_check=30):
+    # Get all img tags from the entire page
+    all_img_tags = soup.find_all('img', recursive=True)
+   
+    if not all_img_tags:
+        return None
+    
+    images_checked = 0
+    fallback_images = []  # Store images with HTML attributes > 150x150 for fallback
+    
+    print(f"---------------check_all_images-----------------"*10)
+    for img_tag in all_img_tags:
+        print(f"--------------------------------"*10)
+        print(img_tag)
+        if images_checked >= max_images_to_check:
+            break
+        
+        # Get image source
+        img_src = img_tag.get('src') or img_tag.get('data-src') or img_tag.get('data-lazy-src')
+        if not img_src:
+            continue
+        
+        img_url = urljoin(url, img_src)
+        
+        # Skip data URLs
+        if img_url.startswith('data:'):
+            continue
+        
+        images_checked += 1
+        
+        print(f"Checking image {images_checked}: {img_url}")
+        
+        # Check if not SVG and has HTML attributes > 150x150 for fallback
+        # (Collect these before verify_image so we have them as fallback)
+        if not img_url.lower().endswith('.svg'):
+            width = img_tag.get('width')
+            height = img_tag.get('height')
+            if width and height:
+                try:
+                    w = int(width)
+                    h = int(height)
+                    if w > 150 and h > 150:
+                        fallback_images.append(img_url)
+                        print(f"    Stored as fallback candidate (HTML: {w}x{h})")
+                except (ValueError, TypeError):
+                    pass
+        
+        # Verify image based on extension and HTML attributes
+        verify_result = verify_image(img_url, img_tag)
+        
+        # If verify returns False, skip this image
+        if verify_result is False:
+            continue
+        
+        # If verify returns True, use this image (size > 150x150 from HTML attributes)
+        if verify_result is True:
+            print(f"  ✓ Found suitable image from HTML attributes: {img_url}")
+            return img_url
+        
+        # If verify returns None, need to download and check
+        
+        # Try to download and check size
+        size_result = check_size(img_url)
+        print(f"  Size check result: {size_result}")
+        if size_result:
+            print(f"  ✓ Found suitable image: {img_url}")
+            return img_url
+        else:
+            print(f"  ✗ Image failed size check or download")
+    
+    # If no image found via download, use fallback (first image with HTML attributes > 150x150)
+    if fallback_images:
+        print(f"  Using fallback image (HTML attributes > 150x150): {fallback_images[0]}")
+        return fallback_images[0]
     
     return None
 
@@ -293,6 +561,11 @@ def scrape_first_image(url, max_images_to_check=20):
     div_image = check_container_images(url, soup, 'div', max_images_to_check)
     if div_image:
         return div_image
+    
+    # Step 4: Get all image tags and check first suitable image
+    all_images_result = check_all_images(url, soup, max_images_to_check)
+    if all_images_result:
+        return all_images_result
     
     return None
 
@@ -344,4 +617,4 @@ if __name__ == "__main__":
         
         print(f"\nResults saved to result.json")
         print(f"Total URLs processed: {len(results)}")
-        print(f"Images found: {sum(1 for item in results if item['image_path'])}")
+        print(f"Images found: {results}")
