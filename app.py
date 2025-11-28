@@ -597,14 +597,10 @@ if __name__ == "__main__":
     # Scrape images from all URLs in links.md
     
     links = [
-        "https://www.businessinsider.com/ai-consulting-startups-2025-10",
-        "https://rtslabs.com/ai-conulting-company-in-usa/",
-        "https://www.code-brew.com/top-10-ai-consulting-companies-in-usa/",
-        "https://www.secondtalent.com/resources/ai-startup-funding-investment/",
-        "https://creyos.com/blog/telemedicine-key-updates",
-        "https://www.ejbi.org/scholarly-articles/the-impact-of-telemedicine-and-digital-health-on-healthcare-delivery-systems-13114.html",
-        "https://www.sermo.com/resources/future-of-telemedicine/",
-        "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025"
+        "https://www.galengrowth.com/u-s-digital-health-funding-in-q2-2025-a-maturing-ecosystem-with-healthcare-impact/",
+        "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025",
+        "https://www.bestbuy.com/"
+        
     ]
     
     results = scrape_images_from_links(links)
