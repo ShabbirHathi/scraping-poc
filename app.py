@@ -343,16 +343,266 @@ def get_page_content(url):
         return response.text
     except httpx.RequestError as e:
         print(f"Request error for {url}: {e}")
-        return None
-    except httpx.HTTPStatusError as e:
+        print(f"  Trying Selenium fallback...")
         try:
-            return get_page_content_selenium(url)
-        except Exception as e:
-            print(f"Error with Selenium: {e}")
+            selenium_result = get_page_content_selenium(url)
+            if selenium_result:
+                print(f"  ✓ Selenium fallback successful")
+                return selenium_result
+            else:
+                print(f"  ✗ Selenium fallback failed")
+                return None
+        except Exception as selenium_error:
+            print(f"  ✗ Selenium error: {selenium_error}")
+            return None
+    except httpx.HTTPStatusError as e:
+        print(f"HTTP status error for {url}: {e}")
+        print(f"  Trying Selenium fallback...")
+        try:
+            selenium_result = get_page_content_selenium(url)
+            if selenium_result:
+                print(f"  ✓ Selenium fallback successful")
+                return selenium_result
+            else:
+                print(f"  ✗ Selenium fallback failed")
+                return None
+        except Exception as selenium_error:
+            print(f"  ✗ Selenium error: {selenium_error}")
             return None
 
+def get_favicon(url, soup):
+    """
+    Extract favicon URL from the page.
+    Checks link tags with various rel attributes and formats.
+    Returns the favicon URL or None if not found.
+    """
+    if not soup:
+        return None
+    
+    # Priority order for favicon rel attributes
+    favicon_rel_types = [
+        'icon',
+        'shortcut icon',
+        'apple-touch-icon',
+        'apple-touch-icon-precomposed',
+        'mask-icon',
+        'fluid-icon'
+    ]
+    
+    # Check link tags in head first
+    head = soup.find('head')
+    if head:
+        for rel_type in favicon_rel_types:
+            link_tags = head.find_all('link', rel=lambda x: x and rel_type.lower() in str(x).lower())
+            for link_tag in link_tags:
+                href = link_tag.get('href')
+                if href:
+                    favicon_url = urljoin(url, href)
+                    # Skip data URLs
+                    if not favicon_url.startswith('data:'):
+                        print(f"  ✓ Found favicon via link tag (rel={rel_type}): {favicon_url}")
+                        return favicon_url
+    
+    # Check for SVG favicons in head (some sites use inline SVG)
+    if head:
+        svg_tags = head.find_all('svg')
+        for svg_tag in svg_tags:
+            # Check if this SVG might be a favicon (usually small, in head)
+            parent = svg_tag.find_parent()
+            if parent:
+                parent_attrs = ' '.join([
+                    ' '.join(parent.get('class', [])),
+                    str(parent.get('id', ''))
+                ]).lower()
+                if 'favicon' in parent_attrs or 'icon' in parent_attrs:
+                    # For inline SVG, we can't return a URL, but we could return the SVG data
+                    # For now, skip inline SVGs as they need special handling
+                    pass
+    
+    # Fallback: Try common favicon path (/favicon.ico)
+    # Most websites have favicon.ico at root, so we return it as fallback
+    # Note: This might return a 404, but it's the standard location
+    favicon_url = urljoin(url, '/favicon.ico')
+    print(f"  ? Using default favicon path: {favicon_url}")
+    return favicon_url
+
+def get_logo(url, soup):
+    """
+    Extract logo URL from the page.
+    Checks header/nav areas and elements with 'logo' in class/id attributes.
+    Returns the logo URL or None if not found.
+    """
+    if not soup:
+        return None
+    
+    # Common header/nav selectors (similar to check_header_image)
+    header_selectors = [
+        'header',
+        'nav',
+        {'class': 'header'},
+        {'id': 'header'},
+        {'class': 'navbar'},
+        {'id': 'navbar'},
+        {'class': 'nav'},
+        {'id': 'nav'},
+        {'class': 'site-header'},
+        {'id': 'site-header'},
+        {'class': 'main-header'},
+        {'id': 'main-header'},
+        {'class': 'logo'},
+        {'id': 'logo'},
+        {'class': 'site-logo'},
+        {'id': 'site-logo'},
+        {'class': 'brand'},
+        {'id': 'brand'},
+        {'class': 'branding'},
+        {'id': 'branding'}
+    ]
+    
+    # Collect header/nav/logo elements
+    logo_elements = []
+    seen_ids = set()
+    
+    for selector in header_selectors:
+        if isinstance(selector, str):
+            found_elements = soup.find_all(selector)
+        else:
+            found_elements = soup.find_all(attrs=selector)
+        
+        for element in found_elements:
+            element_id = id(element)
+            if element_id not in seen_ids:
+                seen_ids.add(element_id)
+                logo_elements.append(element)
+    
+    # Also search for elements with 'logo' in class or id anywhere on page
+    # Search by class containing 'logo'
+    logo_class_elements = soup.find_all(class_=lambda x: x and any('logo' in str(cls).lower() for cls in (x if isinstance(x, list) else [x])))
+    for element in logo_class_elements:
+        element_id = id(element)
+        if element_id not in seen_ids:
+            seen_ids.add(element_id)
+            logo_elements.append(element)
+    
+    # Search by id containing 'logo'
+    all_elements = soup.find_all(id=True)
+    for element in all_elements:
+        element_id_obj = id(element)
+        if element_id_obj not in seen_ids:
+            elem_id = str(element.get('id', '')).lower()
+            if 'logo' in elem_id or 'brand' in elem_id:
+                seen_ids.add(element_id_obj)
+                logo_elements.append(element)
+    
+    # Check each logo element for images
+    for logo_element in logo_elements:
+        # Check if the element itself is an anchor tag with logo
+        if logo_element.name == 'a':
+            # Check for img inside anchor
+            img_in_anchor = logo_element.find('img')
+            if img_in_anchor:
+                img_src = img_in_anchor.get('src') or img_in_anchor.get('data-src') or img_in_anchor.get('data-lazy-src')
+                if img_src:
+                    logo_url = urljoin(url, img_src)
+                    if not logo_url.startswith('data:'):
+                        print(f"  ✓ Found logo via anchor img tag: {logo_url}")
+                        return logo_url
+        
+        # Check for img tags (search recursively within logo element)
+        img_tags = logo_element.find_all('img', recursive=True)
+        for img_tag in img_tags:
+            img_src = img_tag.get('src') or img_tag.get('data-src') or img_tag.get('data-lazy-src')
+            if img_src:
+                logo_url = urljoin(url, img_src)
+                if not logo_url.startswith('data:'):
+                    print(f"  ✓ Found logo via img tag: {logo_url}")
+                    return logo_url
+        
+        # Check for SVG tags (inline or referenced) - search recursively
+        svg_tags = logo_element.find_all('svg', recursive=True)
+        for svg_tag in svg_tags:
+            # Check for SVG with image inside
+            svg_img = svg_tag.find('image')
+            if svg_img:
+                href = svg_img.get('href') or svg_img.get('xlink:href')
+                if href:
+                    logo_url = urljoin(url, href)
+                    if not logo_url.startswith('data:'):
+                        print(f"  ✓ Found logo via SVG image: {logo_url}")
+                        return logo_url
+            
+            # Check for SVG with use tag (referencing external SVG)
+            svg_use = svg_tag.find('use')
+            if svg_use:
+                href = svg_use.get('href') or svg_use.get('xlink:href')
+                if href:
+                    logo_url = urljoin(url, href)
+                    if not logo_url.startswith('data:'):
+                        print(f"  ✓ Found logo via SVG use: {logo_url}")
+                        return logo_url
+            
+            # Check if SVG itself is a link (some sites wrap logo SVG in <a>)
+            svg_parent = svg_tag.find_parent('a')
+            if svg_parent and svg_parent.get('href'):
+                # This is likely a logo link, but we want the SVG content
+                # For now, if it's an inline SVG, we'll skip (would need special handling)
+                pass
+            
+            # For inline SVG, we could return a data URL, but for now skip
+            # as it requires special handling
+        
+        # Check for background-image in style attribute
+        style = logo_element.get('style', '')
+        if style and 'background-image' in style:
+            # Extract URL from background-image: url(...)
+            bg_match = re.search(r'url\(["\']?([^"\']+)["\']?\)', style)
+            if bg_match:
+                logo_url = urljoin(url, bg_match.group(1))
+                if not logo_url.startswith('data:'):
+                    print(f"  ✓ Found logo via background-image: {logo_url}")
+                    return logo_url
+        
+        # Check for CSS class that might have background-image
+        # (This would require CSS parsing, skip for now)
+    
+    # Fallback: Check all img tags in header/nav areas more broadly
+    header_elements = []
+    for selector in ['header', 'nav']:
+        header_elements.extend(soup.find_all(selector))
+    
+    for header_element in header_elements:
+        img_tags = header_element.find_all('img')
+        for img_tag in img_tags:
+            # Check if img tag or parent has logo-related attributes
+            img_attrs = ' '.join([
+                ' '.join(img_tag.get('class', [])),
+                str(img_tag.get('id', '')),
+                str(img_tag.get('alt', ''))
+            ]).lower()
+            
+            parent = img_tag.find_parent()
+            if parent:
+                parent_attrs = ' '.join([
+                    ' '.join(parent.get('class', [])),
+                    str(parent.get('id', ''))
+                ]).lower()
+                img_attrs += ' ' + parent_attrs
+            
+            if 'logo' in img_attrs or 'brand' in img_attrs:
+                img_src = img_tag.get('src') or img_tag.get('data-src') or img_tag.get('data-lazy-src')
+                if img_src:
+                    logo_url = urljoin(url, img_src)
+                    if not logo_url.startswith('data:'):
+                        print(f"  ✓ Found logo in header/nav: {logo_url}")
+                        return logo_url
+    
+    print(f"  ✗ No logo found")
+    return None
+
 def check_header_image(url, soup, max_images_to_check=10):
-   
+    if not soup:
+        return None
+    
     # Common header/nav selectors
     header_selectors = [
         'header',
@@ -420,6 +670,9 @@ def check_header_image(url, soup, max_images_to_check=10):
     return None
 
 def check_container_images(url, soup, container_tag, max_images_to_check=20):
+    if not soup:
+        return None
+    
     containers = soup.find_all(container_tag, recursive=True)
     images_checked = 0
     
@@ -463,6 +716,9 @@ def check_container_images(url, soup, container_tag, max_images_to_check=20):
     return None
 
 def check_all_images(url, soup, max_images_to_check=30):
+    if not soup:
+        return None
+    
     # Get all img tags from the entire page
     all_img_tags = soup.find_all('img', recursive=True)
    
@@ -539,13 +795,9 @@ def check_all_images(url, soup, max_images_to_check=30):
     
     return None
 
-def scrape_first_image(url, max_images_to_check=20):
-   
-    html_content = get_page_content(url)
-    if not html_content:
+def scrape_first_image(url, soup, max_images_to_check=20):
+    if not soup:
         return None
-    
-    soup = BeautifulSoup(html_content, 'html.parser')
     
     # Step 1: First check header/nav for images
     header_image = check_header_image(url, soup, max_images_to_check)
@@ -569,26 +821,65 @@ def scrape_first_image(url, max_images_to_check=20):
     
     return None
 
+def scrape_page(url):
+    html_content = get_page_content(url)
+    if not html_content:
+        return None
+    soup = BeautifulSoup(html_content, 'html.parser')
+    return soup
+
 def scrape_images_from_links(links):
    
     results = []
     
     for idx, url in enumerate(links, start=1):
-        print(f"Processing [{idx}/{len(links)}]: {url}")
-        image_url = scrape_first_image(url)
+        print(f"Processing [{idx}/{len(links)}]: {url}")        
+        soup = scrape_page(url)
+
+        # Check if page content was successfully retrieved
+        if not soup:
+            print(f"  ✗ Failed to retrieve page content (timeout or error)")
+            result_item = {
+                "id": idx,
+                "url": url,
+                "image_path": "No image found",
+                "favicon": "No favicon found",
+                "logo": "No logo found"
+            }
+            results.append(result_item)
+            print()  # Empty line for readability
+            continue
+
+        image_url = scrape_first_image(url, soup)
+        favicon = get_favicon(url, soup)
+        logo = get_logo(url, soup)
         
         result_item = {
             "id": idx,
             "url": url,
-            "image_path": image_url if image_url else "No image found"
+            "image_path": image_url if image_url else "No image found",
+            "favicon": favicon if favicon else "No favicon found",
+            "logo": logo if logo else "No logo found"
         }
         
         results.append(result_item)
         
         if image_url:
-            print(f"  ✓ Found image: {image_url}\n")
+            print(f"  ✓ Found image: {image_url}")
         else:
-            print(f"  ✗ No image found\n")
+            print(f"  ✗ No image found")
+        
+        if favicon:
+            print(f"  ✓ Found favicon: {favicon}")
+        else:
+            print(f"  ✗ No favicon found")
+        
+        if logo:
+            print(f"  ✓ Found logo: {logo}")
+        else:
+            print(f"  ✗ No logo found")
+        
+        print()  # Empty line for readability
     
     return results
 
@@ -597,6 +888,14 @@ if __name__ == "__main__":
     # Scrape images from all URLs in links.md
     
     links = [
+        "https://www.businessinsider.com/ai-consulting-startups-2025-10 ",
+        "https://rtslabs.com/ai-conulting-company-in-usa/",
+        "https://www.code-brew.com/top-10-ai-consulting-companies-in-usa/",
+        "https://www.secondtalent.com/resources/ai-startup-funding-investment/",
+        "https://creyos.com/blog/telemedicine-key-updates",
+        "https://www.ejbi.org/scholarly-articles/the-impact-of-telemedicine-and-digital-health-on-healthcare-delivery-systems-13114.html",
+        "https://www.sermo.com/resources/future-of-telemedicine/",
+        "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025",
         "https://www.galengrowth.com/u-s-digital-health-funding-in-q2-2025-a-maturing-ecosystem-with-healthcare-impact/",
         "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025",
         "https://www.bestbuy.com/"

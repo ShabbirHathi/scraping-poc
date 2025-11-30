@@ -1,7 +1,79 @@
 [
   {
     "id": 1,
+    "url": "https://www.businessinsider.com/ai-consulting-startups-2025-10 ",
+    "image_path": "https://i.insider.com/68f421e41c1f80efbec5db70?width=700",
+    "favicon": "https://www.businessinsider.com/public/assets/BI/US/favicons/apple-touch-icon-192x192.png?v=2025-05",
+    "logo": "https://www.businessinsider.com/public/assets/logos/stacked-black.svg"
+  },
+  {
+    "id": 2,
+    "url": "https://rtslabs.com/ai-conulting-company-in-usa/",
+    "image_path": "https://rtslabs.com/wp-content/uploads/2025/08/ai-consulting.png",
+    "favicon": "https://rtslabs.com/wp-content/uploads/2023/08/cropped-Group-1-32x32.png",
+    "logo": "https://rtslabs.com/wp-content/uploads/2024/12/rts-logo.svg"
+  },
+  {
+    "id": 3,
+    "url": "https://www.code-brew.com/top-10-ai-consulting-companies-in-usa/",
+    "image_path": "https://www.code-brew.com/wp-content/uploads/2025/09/Blog-image-Ai-Consulting.jpg",
+    "favicon": "https://www.code-brew.com/wp-content/uploads/2025/02/favicon.png",
+    "logo": "https://www.code-brew.com/wp-content/themes/Avada-Child-Theme/media/2025/02/codebrew-white-logo.webp"
+  },
+  {
+    "id": 4,
+    "url": "https://www.secondtalent.com/resources/ai-startup-funding-investment/",
+    "image_path": "No image found",
+    "favicon": "https://www.secondtalent.com/wp-content/uploads/2024/07/cropped-1d8624_c8cbace0d3f64036958e6aaf9265d1ccmv2-32x32.png",
+    "logo": "No logo found"
+  },
+  {
+    "id": 5,
+    "url": "https://creyos.com/blog/telemedicine-key-updates",
+    "image_path": "https://creyos.com/hubfs/Telemedicine%20Reforms.png",
+    "favicon": "https://creyos.com/hubfs/creyos-fav-icon.png",
+    "logo": "https://creyos.com/hs-fs/hubfs/CreyosLogo-RGB-1.png?width=94&height=55&name=CreyosLogo-RGB-1.png"
+  },
+  {
+    "id": 6,
+    "url": "https://www.ejbi.org/scholarly-articles/the-impact-of-telemedicine-and-digital-health-on-healthcare-delivery-systems-13114.html",
+    "image_path": "https://www.ejbi.org/images/European-Journal-of-Biomedical-Informatics.jpg",
+    "favicon": "https://www.ejbi.org//images/favicon.ico",
+    "logo": "https://www.ejbi.org/images/European-Journal-of-Biomedical-Informatics.jpg"
+  },
+  {
+    "id": 7,
+    "url": "https://www.sermo.com/resources/future-of-telemedicine/",
+    "image_path": "https://www.sermo.com/wp-content/uploads/2025/06/seo-blog-header-future-of-telemedicine-690x388.png",
+    "favicon": "https://www.sermo.com/wp-content/themes/sermo/img/favicon.ico",
+    "logo": "https://www.sermo.com/wp-content/themes/sermo/img/logo-sermo.svg"
+  },
+  {
+    "id": 8,
+    "url": "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025",
+    "image_path": "https://www.ruralhealth.us/getmedia/52c7ef79-d74a-4dc5-9f2b-0a1ceebf589a/Povio-crop.jpg",
+    "favicon": "https://www.ruralhealth.us/ui/www/assets/favicon_package/apple-touch-icon.png",
+    "logo": "https://www.ruralhealth.us/getmedia/665b351d-8291-4ba0-81fa-2a4040bdc626/nhra-logo.png?width=395&height=144&ext=.png"
+  },
+  {
+    "id": 9,
     "url": "https://www.galengrowth.com/u-s-digital-health-funding-in-q2-2025-a-maturing-ecosystem-with-healthcare-impact/",
-    "image_path": "https://www.galengrowth.com/wp-content/uploads/2025/11/The-Great-Remote-Patient-Monitoring-Reckoning-Cover-Image-300x200.jpg"
+    "image_path": "https://www.galengrowth.com/wp-content/uploads/2025/11/The-Great-Remote-Patient-Monitoring-Reckoning-Cover-Image-300x200.jpg",
+    "favicon": "https://www.galengrowth.com/wp-content/uploads/2022/11/Galen-Growth-favicon-150x150-1-100x100.png",
+    "logo": "https://www.galengrowth.com/wp-content/themes/aspro/images/galen-growth-logo-white.png"
+  },
+  {
+    "id": 10,
+    "url": "https://www.ruralhealth.us/blogs/2025/02/5-telemedicine-trends-for-hospital-leaders-in-2025",
+    "image_path": "https://www.ruralhealth.us/getmedia/52c7ef79-d74a-4dc5-9f2b-0a1ceebf589a/Povio-crop.jpg",
+    "favicon": "https://www.ruralhealth.us/ui/www/assets/favicon_package/apple-touch-icon.png",
+    "logo": "https://www.ruralhealth.us/getmedia/665b351d-8291-4ba0-81fa-2a4040bdc626/nhra-logo.png?width=395&height=144&ext=.png"
+  },
+  {
+    "id": 11,
+    "url": "https://www.bestbuy.com/",
+    "image_path": "No image found",
+    "favicon": "https://www.bestbuy.com/~assets/bby/_com/header-footer/images/favicon-32.png",
+    "logo": "No logo found"
   }
 ]
